@@ -1,15 +1,19 @@
 kicad/linearize.log
-
 kicad/linearize.raw
-
 kicad/linearize.txt
+kicad/fp-info-cache
 
 simulation/.idea/
+
+firmware/.idea/
+firmware/cmake-build-debug/
+firmware/build/
 
 *.zip
 *.kicad_sch-bak
 *.csv
 *.xml
+*.bak
 bom/
 
-kicad/fp-info-cache
+
