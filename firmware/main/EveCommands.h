@@ -17,8 +17,10 @@
 #define FT800_CORERST					0x68			// Reset core - all registers default
 
 // FT800 Memory Commands - use with ft800memWritexx and ft800memReadxx
-#define MEM_WRITE							0x80			// FT800 Host Memory Write
-#define MEM_READ							0x00			// FT800 Host Memory Read
+//#define MEM_WRITE							0x80			// FT800 Host Memory Write
+//#define MEM_READ							0x00			// FT800 Host Memory Read
+#define MEM_WRITE    					0x800000		// FT800 Host Memory Write
+#define MEM_READ					0x000000		// FT800 Host Memory Read
 
 
 // Refer to the FT800 Datasheet
