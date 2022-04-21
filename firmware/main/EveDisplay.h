@@ -86,7 +86,6 @@ private:
     gpio_num_t pd_;
     spi_host_device_t spiDevice_;
 
-
     spi_device_handle_t spiHandle_{};
     spi_bus_config_t buscfg_ = {};
     spi_device_interface_config_t devcfg_ = {};
@@ -94,12 +93,6 @@ private:
     uint32_t displayList_ = RAM_DL;
 
     CommandBuffer cmdBuffer;
-
-    uint16_t readBuffer_{};
-    uint16_t writeBuffer_{};
-    uint16_t cmdOffset_{};
-
-    uint32_t color_{};
 
     void powerUp();
     void enableTouch(bool enable);
@@ -112,18 +105,24 @@ private:
     uint8_t readMem8(uint32_t address);
     uint16_t readMem16(uint32_t address);
     uint32_t readMem32(uint32_t address);
+    void writeString(const std::string &str);
 
     void spiTransfer(uint8_t* txBuffer, uint8_t* rxBuffer, uint16_t length, spi_send_mode_t mode, spi_send_type_t flags);
 
     void addAddressToBuffer(uint32_t address, uint8_t *buffer);
-    uint16_t incCmdOffset(uint8_t cmdSize);
+
+    uint16_t waitForCmdExecution();
+    void startCommand();
+    void endCommand();
+    void executeCommand();
 
 public:
     EveDisplay(gpio_num_t pd, gpio_num_t mosi, gpio_num_t miso, gpio_num_t cs, gpio_num_t clk);
     void InitBus(spi_host_device_t hostId, bool useDMA);
     void InitDisplay();
     void calibrateTouch();
-    void TestDisplay();
 
-    void print(int16_t x, int16_t y, int16_t font, int16_t options, std::string str);
+    void cmdText(int16_t x, int16_t y, int16_t font, int16_t options, const std::string &str);
+    void cmdNumber(int16_t x, int16_t y, int16_t font, int16_t options, int32_t number);
+    void cmdCalibrate();
 };

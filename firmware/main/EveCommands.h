@@ -1,10 +1,14 @@
 #pragma once
 
+#define RED                  0xFF0000UL                                                    // Red
+#define GREEN                0x00FF00UL                                                    // Green
+#define BLUE                 0x0000FFUL                                                    // Blue
+#define WHITE                0xFFFFFFUL                                                    // White
+#define BLACK                0x000000UL                                                    // Black
+
 #define FT_DL_SIZE            (8*1024)  //8KB Display List buffer size
 #define FT_CMD_FIFO_SIZE      (4*1024)  //4KB coprocessor Fifo size
 #define FT_CMD_SIZE           (4)       //4 byte per coprocessor command of EVE
-
-#define FT800_VERSION         "1.9.0"
 
 // FT800 Chip Commands - use with cmdWrite
 #define FT800_ACTIVE					0x00			// Initializes FT800
@@ -197,7 +201,6 @@
 #define DL_TAG_MASK(mask) ((20UL<<24)|(((mask)&1UL)<<0))
 #define DL_VERTEX2F(x,y) ((1UL<<30)|(((x)&32767UL)<<15)|(((y)&32767UL)<<0))
 #define DL_VERTEX2II(x,y,handle,cell) ((2UL<<30)|(((x)&511UL)<<21)|(((y)&511UL)<<12)|(((handle)&31UL)<<7)|(((cell)&127UL)<<0))
-
 
 // Command and register value options
 #define CLR_COL               0x4

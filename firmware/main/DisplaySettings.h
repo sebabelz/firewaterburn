@@ -14,7 +14,7 @@ typedef struct DisplaySettings {
     uint16_t lcdVsync0  = 0;
     uint16_t lcdVsync1  = 10;
     uint16_t lcdPclk    = 5;
-    uint16_t lcdSwizzle = 0;
-    uint16_t lcdPclkpol = 1;
-    uint16_t lcdCspread = 1;
+    uint8_t lcdSwizzle = 0;
+    uint8_t lcdPclkpol = 1;
+    uint8_t lcdCspread = 1;
 }DisplaySettings_t;

@@ -19,6 +19,7 @@ private:
 
     void incCmdOffset(uint16_t &size);
     void incCmdOffset(uint16_t &&size);
+
 public:
     CommandBuffer();
     explicit CommandBuffer(uint16_t size);
@@ -35,23 +36,23 @@ public:
     uint8_t* operator() ();
 
     template<typename T>
-    void addCommand(T &&command)
+    void addCommand(T &&data)
     {
         ESP_LOGI(TAG, "%d", sizeof(T));
         for(uint8_t i=0; i < sizeof(T); ++i) {
-            buffer_[offset_ + i] = command >> (8 * i);
+            buffer_[offset_ + i] = data >> (8 * i);
         }
         incCmdOffset(sizeof(T));
     }
 
     template<typename T>
-    void addCommand(uint32_t &&address, T &&command)
+    void addCommand(uint32_t &&address, T &&data)
     {
         buffer_[offset_] = address >> 16;
         buffer_[offset_ + 1] = address >> 8;
         buffer_[offset_ + 2] = address;
         incOffset(3);
 
-        addCommand(command);
+        addCommand(data);
     }
 };

@@ -13,7 +13,7 @@ extern "C" [[noreturn]] void app_main(void)
 
     tft.InitBus(SPI2_HOST, true);
     tft.InitDisplay();
-    tft.print(240, 136, 31, OPT_CENTER, "Hallo Florian");
+
     for (;;) {
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
