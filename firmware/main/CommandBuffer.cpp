@@ -31,6 +31,7 @@ CommandBuffer::CommandBuffer(uint16_t size) {
     assert(size <= 4096);
     assert(4096 % size == 0);
     offset_ = 0;
+    cmdOffset_ = 0;
     size_ = size;
 
     buffer_ = (uint8_t*)heap_caps_calloc(size_, sizeof(*buffer_), MALLOC_CAP_SPIRAM | MALLOC_CAP_32BIT);

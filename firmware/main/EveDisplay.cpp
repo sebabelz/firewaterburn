@@ -40,9 +40,6 @@ void EveDisplay::InitBus(spi_host_device_t hostId, bool useDMA) {
 
     error = spi_bus_add_device(spiDevice_, &devcfg_, &spiHandle_);
     assert(error == ESP_OK);
-
-    //TODO return error for logging
-    //return error
 }
 
 void EveDisplay::InitDisplay() {
@@ -56,7 +53,7 @@ void EveDisplay::InitDisplay() {
 
     uint8_t res = readMem8(REG_ID);
 
-    ESP_LOGI("TFT", "Read %02X from REG_ID", res);
+    assert(res==0x7C);
 
     writeMem16(REG_HSIZE, displaySettings_.lcdWidth);
     writeMem16(REG_HCYCLE, displaySettings_.lcdHcycle);
@@ -141,6 +138,142 @@ void EveDisplay::addAddressToBuffer(uint32_t address, uint8_t *buffer) {
     buffer[2] = (uint8_t) address;
 }
 
+void EveDisplay::writeString(const std::string &str) {
+    for (auto c: str) {
+        cmdBuffer.addCommand(c);
+    }
+
+    auto toAlign = 4 - (str.length() % 4);
+
+    for (int i = 0; i < toAlign; ++i) {
+        cmdBuffer.addCommand('\0');
+    }
+}
+
+void EveDisplay::spiTransfer(uint8_t *txBuffer, uint8_t *rxBuffer, uint16_t length, spi_send_mode_t mode,
+                             spi_send_type_t type) {
+    assert(length != 0);
+    assert(mode != (SPI_WRITE | SPI_READ));
+
+    spi_transaction_t t = {};
+
+    if (length <= 4 && txBuffer != nullptr) {
+        t.flags = SPI_TRANS_USE_TXDATA;
+        memcpy(t.tx_data, txBuffer, length);
+    } else {
+        t.tx_buffer = txBuffer;
+    }
+
+    t.length = 8 * length;
+
+    if (mode == SPI_READ) {
+        t.rx_buffer = rxBuffer;
+    }
+
+    switch (type) {
+        case SPI_SEND_POLLING:
+            spi_device_polling_transmit(spiHandle_, &t);
+            break;
+        case SPI_SEND_SYNCHRONOUS:
+            spi_device_transmit(spiHandle_, &t);
+            break;
+        case SPI_SEND_QUEUED:
+            break;
+        default:
+            ESP_LOGE(TAG, "No SPI transaction type selected");
+    }
+}
+
+void EveDisplay::calibrateTouch() {
+    cmdBuffer.setCmdOffset(waitForCmdExecution());
+
+    cmdBuffer.addCommand((RAM_CMD + cmdBuffer.getCmdOffset()) | MEM_WRITE, CMD_DLSTART);
+    cmdBuffer.addCommand(DL_CLEAR_RGB | BLACK);
+    cmdBuffer.addCommand(DL_CLEAR | CLR_COL | CLR_STN | CLR_TAG);
+
+    cmdText(240, 50, 26, OPT_CENTER, "Please tap on the dot.");
+    cmdCalibrate();
+
+    cmdBuffer.addCommand(DL_DISPLAY);
+    cmdBuffer.addCommand(CMD_SWAP);
+
+    spiTransfer(cmdBuffer(), nullptr, cmdBuffer.length(), SPI_WRITE, SPI_SEND_POLLING);
+
+    writeMem32(REG_CMD_WRITE, cmdBuffer.getCmdOffset());
+    cmdBuffer.clearBuffer();
+
+    waitForCmdExecution();
+
+    uint32_t touch_a, touch_b, touch_c, touch_d, touch_e, touch_f;
+
+    touch_a = readMem32(REG_TOUCH_TRANSFORM_A);
+    touch_b = readMem32(REG_TOUCH_TRANSFORM_B);
+    touch_c = readMem32(REG_TOUCH_TRANSFORM_C);
+    touch_d = readMem32(REG_TOUCH_TRANSFORM_D);
+    touch_e = readMem32(REG_TOUCH_TRANSFORM_E);
+    touch_f = readMem32(REG_TOUCH_TRANSFORM_F);
+
+    cmdBuffer.addCommand((RAM_CMD + cmdBuffer.getCmdOffset()) | MEM_WRITE, CMD_DLSTART);
+    cmdBuffer.addCommand(DL_CLEAR_RGB | BLACK);
+    cmdBuffer.addCommand(DL_CLEAR | CLR_COL | CLR_STN | CLR_TAG);
+    cmdBuffer.addCommand(DL_TAG(0));
+
+    cmdText(5, 15, 26, 0, "TOUCH_TRANSFORM_A:");
+    cmdText(5, 30, 26, 0, "TOUCH_TRANSFORM_B:");
+    cmdText(5, 45, 26, 0, "TOUCH_TRANSFORM_C:");
+    cmdText(5, 60, 26, 0, "TOUCH_TRANSFORM_D:");
+    cmdText(5, 75, 26, 0, "TOUCH_TRANSFORM_E:");
+    cmdText(5, 90, 26, 0, "TOUCH_TRANSFORM_F:");
+
+    cmdNumber(310, 15, 26, OPT_RIGHTX, touch_a);
+    cmdNumber(310, 30, 26, OPT_RIGHTX, touch_b);
+    cmdNumber(310, 45, 26, OPT_RIGHTX, touch_c);
+    cmdNumber(310, 60, 26, OPT_RIGHTX, touch_d);
+    cmdNumber(310, 75, 26, OPT_RIGHTX, touch_e);
+    cmdNumber(310, 90, 26, OPT_RIGHTX, touch_f);
+
+    cmdBuffer.addCommand(DL_DISPLAY);
+    cmdBuffer.addCommand(CMD_SWAP);
+
+    spiTransfer(cmdBuffer(), nullptr, cmdBuffer.length(), SPI_WRITE, SPI_SEND_POLLING);
+
+    writeMem32(REG_CMD_WRITE, cmdBuffer.getCmdOffset());
+    cmdBuffer.clearBuffer();
+}
+
+uint16_t EveDisplay::waitForCmdExecution() {
+    uint16_t readBuffer;
+    uint16_t writeBuffer;
+
+    do {
+        readBuffer = readMem16(REG_CMD_READ);
+        writeBuffer = readMem16(REG_CMD_WRITE);
+    } while (readBuffer != writeBuffer);
+
+    cmdBuffer.setCmdOffset(writeBuffer);
+
+    return writeBuffer;
+}
+
+void EveDisplay::startCommand() {
+    cmdBuffer.addCommand((RAM_CMD + cmdBuffer.getCmdOffset()) | MEM_WRITE, CMD_DLSTART);
+    cmdBuffer.addCommand(DL_CLEAR_RGB | BLACK);
+    cmdBuffer.addCommand(DL_CLEAR | CLR_COL | CLR_STN | CLR_TAG);
+}
+
+void EveDisplay::endCommand() {
+    cmdBuffer.addCommand(DL_DISPLAY);
+    cmdBuffer.addCommand(CMD_SWAP);
+}
+
+void EveDisplay::executeCommand() {
+    spiTransfer(cmdBuffer(), nullptr, cmdBuffer.length(), SPI_WRITE, SPI_SEND_POLLING);
+
+    writeMem32(REG_CMD_WRITE, cmdBuffer.getCmdOffset());
+
+    cmdBuffer.clearBuffer();
+}
+
 void EveDisplay::writeCmd(uint8_t cmd) {
     uint8_t buffer[3] = {cmd, 0x00, 0x00};
 
@@ -219,137 +352,13 @@ uint32_t EveDisplay::readMem32(uint32_t address) {
     return data;
 }
 
-void EveDisplay::writeString(const std::string &str) {
-    for (auto c: str) {
-        cmdBuffer.addCommand(c);
-    }
 
-    auto toAlign = 4 - (str.length() % 4);
-
-    for (int i = 0; i < toAlign; ++i) {
-        cmdBuffer.addCommand('\0');
-    }
+void EveDisplay::addCommand(uint32_t data) {
+    cmdBuffer.addCommand(data);
 }
 
-void EveDisplay::spiTransfer(uint8_t *txBuffer, uint8_t *rxBuffer, uint16_t length, spi_send_mode_t mode,
-                             spi_send_type_t type) {
-    assert(length != 0);
-    assert(mode != (SPI_WRITE | SPI_READ));
-
-    spi_transaction_t t = {};
-
-    if (length <= 4 && txBuffer != nullptr) {
-        t.flags = SPI_TRANS_USE_TXDATA;
-        memcpy(t.tx_data, txBuffer, length);
-    } else {
-        t.tx_buffer = txBuffer;
-    }
-
-    t.length = 8 * length;
-
-    if (mode == SPI_READ) {
-        t.rx_buffer = rxBuffer;
-    }
-
-    switch (type) {
-        case SPI_SEND_POLLING:
-            spi_device_polling_transmit(spiHandle_, &t);
-            break;
-        case SPI_SEND_SYNCHRONOUS:
-            spi_device_transmit(spiHandle_, &t);
-            break;
-        case SPI_SEND_QUEUED:
-            break;
-        default:
-            ESP_LOGE(TAG, "No SPI transaction type selected");
-    }
-}
-
-uint16_t EveDisplay::waitForCmdExecution() {
-    uint16_t readBuffer;
-    uint16_t writeBuffer;
-
-    do {
-        readBuffer = readMem16(REG_CMD_READ);
-        writeBuffer = readMem16(REG_CMD_WRITE);
-    } while (readBuffer != writeBuffer);
-
-    return writeBuffer;
-}
-
-void EveDisplay::startCommand() {
-    cmdBuffer.addCommand((RAM_CMD + cmdBuffer.getCmdOffset()) | MEM_WRITE, CMD_DLSTART);
-    cmdBuffer.addCommand(DL_CLEAR_RGB | BLACK);
-    cmdBuffer.addCommand(DL_CLEAR | CLR_COL | CLR_STN | CLR_TAG);
-}
-
-void EveDisplay::endCommand() {
-    cmdBuffer.addCommand(DL_DISPLAY);
-    cmdBuffer.addCommand(CMD_SWAP);
-}
-
-void EveDisplay::executeCommand() {
-    spiTransfer(cmdBuffer(), nullptr, cmdBuffer.length(), SPI_WRITE, SPI_SEND_POLLING);
-
-    writeMem32(REG_CMD_WRITE, cmdBuffer.getCmdOffset());
-    cmdBuffer.clearBuffer();
-}
-
-void EveDisplay::calibrateTouch() {
-    cmdBuffer.setCmdOffset(waitForCmdExecution());
-
-    cmdBuffer.addCommand((RAM_CMD + cmdBuffer.getCmdOffset()) | MEM_WRITE, CMD_DLSTART);
-    cmdBuffer.addCommand(DL_CLEAR_RGB | BLACK);
-    cmdBuffer.addCommand(DL_CLEAR | CLR_COL | CLR_STN | CLR_TAG);
-
-    cmdText(240, 50, 26, OPT_CENTER, "Please tap on the dot.");
-    cmdCalibrate();
-
-    cmdBuffer.addCommand(DL_DISPLAY);
-    cmdBuffer.addCommand(CMD_SWAP);
-
-    spiTransfer(cmdBuffer(), nullptr, cmdBuffer.length(), SPI_WRITE, SPI_SEND_POLLING);
-
-    writeMem32(REG_CMD_WRITE, cmdBuffer.getCmdOffset());
-    cmdBuffer.clearBuffer();
-
-    waitForCmdExecution();
-
-    uint32_t touch_a, touch_b, touch_c, touch_d, touch_e, touch_f;
-
-    touch_a = readMem32(REG_TOUCH_TRANSFORM_A);
-    touch_b = readMem32(REG_TOUCH_TRANSFORM_B);
-    touch_c = readMem32(REG_TOUCH_TRANSFORM_C);
-    touch_d = readMem32(REG_TOUCH_TRANSFORM_D);
-    touch_e = readMem32(REG_TOUCH_TRANSFORM_E);
-    touch_f = readMem32(REG_TOUCH_TRANSFORM_F);
-
-    cmdBuffer.addCommand((RAM_CMD + cmdBuffer.getCmdOffset()) | MEM_WRITE, CMD_DLSTART);
-    cmdBuffer.addCommand(DL_CLEAR_RGB | BLACK);
-    cmdBuffer.addCommand(DL_CLEAR | CLR_COL | CLR_STN | CLR_TAG);
-    cmdBuffer.addCommand(DL_TAG(0));
-
-    cmdText(5, 15, 26, 0, "TOUCH_TRANSFORM_A:");
-    cmdText(5, 30, 26, 0, "TOUCH_TRANSFORM_B:");
-    cmdText(5, 45, 26, 0, "TOUCH_TRANSFORM_C:");
-    cmdText(5, 60, 26, 0, "TOUCH_TRANSFORM_D:");
-    cmdText(5, 75, 26, 0, "TOUCH_TRANSFORM_E:");
-    cmdText(5, 90, 26, 0, "TOUCH_TRANSFORM_F:");
-
-    cmdNumber(310, 15, 26, OPT_RIGHTX, touch_a);
-    cmdNumber(310, 30, 26, OPT_RIGHTX, touch_b);
-    cmdNumber(310, 45, 26, OPT_RIGHTX, touch_c);
-    cmdNumber(310, 60, 26, OPT_RIGHTX, touch_d);
-    cmdNumber(310, 75, 26, OPT_RIGHTX, touch_e);
-    cmdNumber(310, 90, 26, OPT_RIGHTX, touch_f);
-
-    cmdBuffer.addCommand(DL_DISPLAY);
-    cmdBuffer.addCommand(CMD_SWAP);
-
-    spiTransfer(cmdBuffer(), nullptr, cmdBuffer.length(), SPI_WRITE, SPI_SEND_POLLING);
-
-    writeMem32(REG_CMD_WRITE, cmdBuffer.getCmdOffset());
-    cmdBuffer.clearBuffer();
+void EveDisplay::tag(uint32_t value) {
+    cmdBuffer.addCommand(DL_TAG(value));
 }
 
 void EveDisplay::cmdText(int16_t x, int16_t y, int16_t font, int16_t options, const std::string &str) {
@@ -371,10 +380,85 @@ void EveDisplay::cmdNumber(int16_t x, int16_t y, int16_t font, int16_t options, 
     cmdBuffer.addCommand(number);
 }
 
+void EveDisplay::cmdButton(int16_t x, int16_t y, int16_t w, int16_t h, int16_t font, int16_t options,
+                           const std::string &label) {
+//    cmdBuffer.addCommand(DL_COLOR_RGB | WHITE);
+    cmdBuffer.addCommand(CMD_BUTTON);
+    cmdBuffer.addCommand(x);
+    cmdBuffer.addCommand(y);
+    cmdBuffer.addCommand(w);
+    cmdBuffer.addCommand(h);
+    cmdBuffer.addCommand(font);
+    cmdBuffer.addCommand(options);
+
+    writeString(label);
+}
+
+void EveDisplay::cmdSlider(int16_t x, int16_t y, int16_t w, int16_t h, int16_t options, uint16_t val, uint16_t range) {
+    cmdBuffer.addCommand(CMD_SLIDER);
+    cmdBuffer.addCommand(x);
+    cmdBuffer.addCommand(y);
+    cmdBuffer.addCommand(w);
+    cmdBuffer.addCommand(h);
+    cmdBuffer.addCommand(options);
+
+    cmdBuffer.addCommand(val);
+    cmdBuffer.addCommand(range);
+    cmdBuffer.addCommand('\0');
+    cmdBuffer.addCommand('\0');
+}
+
+void EveDisplay::cmdTrack(int16_t x, int16_t y, int16_t w, int16_t h, int16_t tag) {
+    cmdBuffer.addCommand(CMD_TRACK);
+    cmdBuffer.addCommand(x);
+    cmdBuffer.addCommand(y);
+    cmdBuffer.addCommand(w);
+    cmdBuffer.addCommand(h);
+
+    cmdBuffer.addCommand(tag);
+    cmdBuffer.addCommand('\0');
+    cmdBuffer.addCommand('\0');
+}
+
+void
+EveDisplay::cmdProgressBar(int16_t x, int16_t y, int16_t w, int16_t h, int16_t options, uint16_t val, uint16_t range) {
+    cmdBuffer.addCommand(CMD_PROGRESS);
+    cmdBuffer.addCommand(x);
+    cmdBuffer.addCommand(y);
+    cmdBuffer.addCommand(w);
+    cmdBuffer.addCommand(h);
+    cmdBuffer.addCommand(options);
+
+    cmdBuffer.addCommand(val);
+    cmdBuffer.addCommand(range);
+    cmdBuffer.addCommand('\0');
+    cmdBuffer.addCommand('\0');
+}
+
+void EveDisplay::cmdGradient(int16_t x0, int16_t y0, uint32_t color0, int16_t x1, int16_t y1, uint32_t color1) {
+    cmdBuffer.addCommand(CMD_GRADIENT);
+    cmdBuffer.addCommand(x0);
+    cmdBuffer.addCommand(y0);
+    cmdBuffer.addCommand(color0);
+    cmdBuffer.addCommand(x1);
+    cmdBuffer.addCommand(y1);
+    cmdBuffer.addCommand(color1);
+}
+
+void EveDisplay::helloWorld(int16_t x, int16_t y, int16_t font, int16_t options, const std::string& str, uint32_t color) {
+
+    cmdBuffer.setCmdOffset(waitForCmdExecution());
+
+    startCommand();
+    cmdBuffer.addCommand(DL_COLOR_RGB | color);
+
+    cmdText(x, y, font, options, str);
+    endCommand();
+
+    executeCommand();
+}
+
 void EveDisplay::cmdCalibrate() {
     cmdBuffer.addCommand(CMD_CALIBRATE);
     cmdBuffer.addCommand(0);
 }
-
-
-

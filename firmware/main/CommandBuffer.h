@@ -38,7 +38,6 @@ public:
     template<typename T>
     void addCommand(T &&data)
     {
-        ESP_LOGI(TAG, "%d", sizeof(T));
         for(uint8_t i=0; i < sizeof(T); ++i) {
             buffer_[offset_ + i] = data >> (8 * i);
         }

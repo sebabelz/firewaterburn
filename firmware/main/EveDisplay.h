@@ -98,6 +98,25 @@ private:
     void enableTouch(bool enable);
     void enableAudio(bool enable);
 
+    void writeString(const std::string &str);
+
+    void spiTransfer(uint8_t* txBuffer, uint8_t* rxBuffer, uint16_t length, spi_send_mode_t mode, spi_send_type_t flags);
+
+    void addAddressToBuffer(uint32_t address, uint8_t *buffer);
+
+
+
+public:
+    EveDisplay(gpio_num_t pd, gpio_num_t mosi, gpio_num_t miso, gpio_num_t cs, gpio_num_t clk);;;
+    void InitBus(spi_host_device_t hostId, bool useDMA);
+    void InitDisplay();
+    void calibrateTouch();
+
+    uint16_t waitForCmdExecution();
+    void startCommand();
+    void endCommand();
+    void executeCommand();
+
     void writeCmd(uint8_t cmd);
     void writeMem8(uint32_t address, uint8_t data);
     void writeMem16(uint32_t address, uint16_t data);
@@ -105,24 +124,18 @@ private:
     uint8_t readMem8(uint32_t address);
     uint16_t readMem16(uint32_t address);
     uint32_t readMem32(uint32_t address);
-    void writeString(const std::string &str);
 
-    void spiTransfer(uint8_t* txBuffer, uint8_t* rxBuffer, uint16_t length, spi_send_mode_t mode, spi_send_type_t flags);
-
-    void addAddressToBuffer(uint32_t address, uint8_t *buffer);
-
-    uint16_t waitForCmdExecution();
-    void startCommand();
-    void endCommand();
-    void executeCommand();
-
-public:
-    EveDisplay(gpio_num_t pd, gpio_num_t mosi, gpio_num_t miso, gpio_num_t cs, gpio_num_t clk);
-    void InitBus(spi_host_device_t hostId, bool useDMA);
-    void InitDisplay();
-    void calibrateTouch();
-
+    void addCommand(uint32_t data);
+    void tag(uint32_t value);
     void cmdText(int16_t x, int16_t y, int16_t font, int16_t options, const std::string &str);
     void cmdNumber(int16_t x, int16_t y, int16_t font, int16_t options, int32_t number);
+    void cmdButton(int16_t x, int16_t y, int16_t w, int16_t h, int16_t font, int16_t options, const std::string &label);
+    void cmdSlider(int16_t x, int16_t y, int16_t w, int16_t h, int16_t options, uint16_t val, uint16_t range);
+    void cmdProgressBar(int16_t x, int16_t y, int16_t w, int16_t h, int16_t options, uint16_t val, uint16_t range);
+    void cmdGradient(int16_t x0, int16_t y0, uint32_t color0, int16_t x1, int16_t y1, uint32_t color1);
+    void cmdTrack(int16_t x, int16_t y, int16_t w, int16_t h, int16_t tag);
     void cmdCalibrate();
+
+
+    void helloWorld(int16_t x, int16_t y, int16_t font, int16_t options, const std::string& str, uint32_t color=WHITE);
 };
